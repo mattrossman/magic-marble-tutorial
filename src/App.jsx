@@ -1,6 +1,6 @@
 import { useRef, Suspense, useState, useLayoutEffect, useEffect } from 'react'
 import { Sphere, OrbitControls, Box, useTexture, Environment } from '@react-three/drei'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Canvas, useFrame } from '@react-three/fiber'
 import * as ShaderUtils from './ShaderUtils'
 import * as THREE from 'three'
 import { useControls } from 'leva'
@@ -16,7 +16,6 @@ const options = [
   [0, 0, 80],
 ]
 
-const AnimatedCanvas = aW(Canvas)
 export default function App() {
   const [step, setStep] = useState(0)
   const { hsl } = useSpringWeb({
@@ -26,16 +25,18 @@ export default function App() {
   const springyGradient = hsl.to((h, s, l) => `radial-gradient(hsl(${h}, ${s * 0.7}%, ${l}%), hsl(${h},${s * 0.4}%, ${l * 0.2}%))`)
   const [tap, setTap] = useState(false)
   return (
-    <AnimatedCanvas style={{ background: springyGradient }} camera={{ position: [0, 0, 3] }}>
-      <Suspense fallback={null}>
-        <OrbitControls enabled={true} />
-        <Marble tap={tap} step={step} setStep={setStep} />
-        <Environment preset="warehouse" />
-        <Box scale={100} onPointerDown={() => setTap(true)} onPointerUp={() => setTap(false)}>
-          <meshBasicMaterial side={THREE.BackSide} visible={false} />
-        </Box>
-      </Suspense>
-    </AnimatedCanvas>
+    <aW.div style={{ background: springyGradient, width: '100%', height: '100%' }}>
+      <Canvas camera={{ position: [0, 0, 3] }}>
+        <Suspense fallback={null}>
+          <OrbitControls autoRotate enableRotate={false} enablePan={false} enableZoom={false} />
+          <Marble tap={tap} step={step} setStep={setStep} />
+          <Environment preset="warehouse" />
+          <Box scale={100} onPointerDown={() => setTap(true)} onPointerUp={() => setTap(false)}>
+            <meshBasicMaterial side={THREE.BackSide} visible={false} />
+          </Box>
+        </Suspense>
+      </Canvas>
+    </aW.div>
   )
 }
 
@@ -56,10 +57,6 @@ function Marble({ tap, step, setStep }) {
       friction: 15,
       tension: 300,
     },
-  })
-  const { rotation } = useSpringThree({
-    rotation: [0, -step * Math.PI * 2, 0],
-    config: { tension: 20, friction: 5 },
   })
   return (
     <a3.group scale={scale} onPointerEnter={() => setHover(true)} onPointerOut={() => setHover(false)} onClick={() => setStep(step + 1)}>
@@ -153,7 +150,10 @@ function MagicMarbleMaterial({ step, modelRef, ...props }) {
       varying vec3 v_pos;
       varying vec3 v_dir;
 
-      // XYZ -> UV
+      /**
+       * @param {vec3} p - 3D position
+       * @returns {vec2} UV coordinate on a unit sphere 
+       */
       vec2 uvSphere(vec3 p) {
         vec3 pn = normalize(p);
         float u = 0.5 - atan(pn.z, pn.x) / (2. * 3.1415926);
@@ -183,7 +183,6 @@ function MagicMarbleMaterial({ step, modelRef, ...props }) {
           uv = uvSphere(p + (displacementA + displacementB) * displacementStrength);
           float noiseVal = texture(noiseMap, uv).r;
           float height = length(p); // 1 at surface, 0 at core
-          // float cutoff = height;
           float cutoff = 1. - float(i) * perIteration;
           float mask = smoothstep(cutoff, cutoff + smoothing, noiseVal);
           c += mask * perIteration;
@@ -204,18 +203,13 @@ function MagicMarbleMaterial({ step, modelRef, ...props }) {
         rayDir = mix(rayDir, norm, refraction);
         rayDir = normalize(rayDir);
 
-        vec2 uv = uvSphere(v_pos);
-        float tex = texture(noiseMap, uv).r;
-        // vec3 rgb = vec3(tex);
         vec3 rgb = marchMarble(rayOrigin, rayDir);
-        // rgb = toneMapping(rgb);
         vec4 diffuseColor = vec4( rgb, opacity);
       `
     )
   }
 
   return (
-    // <meshBasicMaterial map={displacementMap} />
     <meshStandardMaterial
       {...props}
       onBeforeCompile={onBeforeCompile}
