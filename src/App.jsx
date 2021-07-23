@@ -1,10 +1,9 @@
-import { useRef, Suspense, useState, useLayoutEffect, useEffect } from 'react'
+import { useRef, Suspense, useState } from 'react'
 import { Sphere, OrbitControls, Box, useTexture, Environment } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import * as ShaderUtils from './ShaderUtils'
 import * as THREE from 'three'
-import { useControls } from 'leva'
-import { a as aW, useSpring as useSpringWeb } from '@react-spring/web'
+import { a as aw, useSpring as useSpringWeb } from '@react-spring/web'
 import { a as a3, useSpring as useSpringThree } from '@react-spring/three'
 
 // HSL values
@@ -25,7 +24,7 @@ export default function App() {
   const springyGradient = hsl.to((h, s, l) => `radial-gradient(hsl(${h}, ${s * 0.7}%, ${l}%), hsl(${h},${s * 0.4}%, ${l * 0.2}%))`)
   const [tap, setTap] = useState(false)
   return (
-    <aW.div style={{ background: springyGradient, width: '100%', height: '100%' }}>
+    <aw.div style={{ background: springyGradient, width: '100%', height: '100%' }}>
       <Canvas camera={{ position: [0, 0, 2.5] }}>
         <Suspense fallback={null}>
           <OrbitControls autoRotate enableRotate={false} enablePan={false} enableZoom={false} />
@@ -36,20 +35,12 @@ export default function App() {
           </Box>
         </Suspense>
       </Canvas>
-    </aW.div>
+    </aw.div>
   )
 }
 
 function Marble({ tap, step, setStep }) {
-  const matProps = useControls({
-    roughness: { value: 0.1, min: 0, max: 1 },
-    metalness: { value: 0, min: 0, max: 1 },
-    envMapIntensity: { value: 1, min: 0, max: 1 },
-  })
   const ref = useRef()
-  useFrame(({ clock }) => {
-    // ref.current.rotation.y = clock.elapsedTime * 0.2
-  })
   const [hover, setHover] = useState(false)
   const { scale } = useSpringThree({
     scale: hover ? (tap ? 1.05 : 1.1) : 1,
@@ -61,7 +52,7 @@ function Marble({ tap, step, setStep }) {
   return (
     <a3.group scale={scale} onPointerEnter={() => setHover(true)} onPointerOut={() => setHover(false)} onClick={() => setStep(step + 1)}>
       <Sphere args={[1, 64, 32]} ref={ref}>
-        <MagicMarbleMaterial step={step} modelRef={ref} {...matProps} />
+        <MagicMarbleMaterial step={step} modelRef={ref} roughness={0.1} />
       </Sphere>
     </a3.group>
   )
@@ -80,11 +71,11 @@ function MagicMarbleMaterial({ step, modelRef, ...props }) {
     worldToLocal: { value: new THREE.Matrix4() },
     noiseMap: { value: noiseMap },
     displacementMap: { value: displacementMap },
-    iterations: { value: null },
-    maxDepth: { value: null },
-    smoothing: { value: null },
-    refraction: { value: null },
-    displacementStrength: { value: 0.02 },
+    iterations: { value: 64 },
+    maxDepth: { value: 0.75 },
+    smoothing: { value: 0.2 },
+    refraction: { value: 0.7 },
+    displacementStrength: { value: 0.04 },
   }))
   uniforms.noiseMap.value = noiseMap
   uniforms.displacementMap.value = displacementMap
@@ -101,13 +92,6 @@ function MagicMarbleMaterial({ step, modelRef, ...props }) {
     uniforms.time.value = timeOffset.get() + clock.elapsedTime * 0.05
     modelRef.current.updateMatrixWorld()
     uniforms.worldToLocal.value.copy(modelRef.current.matrixWorld).invert()
-  })
-  useControls({
-    iterations: { value: 64, step: 1, min: 0, onChange: (v) => (uniforms.iterations.value = v) },
-    maxDepth: { value: 0.8, min: 0, max: 1, onChange: (v) => (uniforms.maxDepth.value = v) },
-    smoothing: { value: 0.1, min: 0, max: 1, onChange: (v) => (uniforms.smoothing.value = v) },
-    refraction: { value: 0.5, min: 0, max: 1, onChange: (v) => (uniforms.refraction.value = v) },
-    displacementStrength: { value: 0.02, min: 0, max: 0.1, onChange: (v) => (uniforms.displacementStrength.value = v) },
   })
 
   const onBeforeCompile = (shader) => {
