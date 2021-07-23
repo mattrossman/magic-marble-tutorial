@@ -26,7 +26,7 @@ export default function App() {
   const [tap, setTap] = useState(false)
   return (
     <aW.div style={{ background: springyGradient, width: '100%', height: '100%' }}>
-      <Canvas camera={{ position: [0, 0, 3] }}>
+      <Canvas camera={{ position: [0, 0, 2.5] }}>
         <Suspense fallback={null}>
           <OrbitControls autoRotate enableRotate={false} enablePan={false} enableZoom={false} />
           <Marble tap={tap} step={step} setStep={setStep} />
