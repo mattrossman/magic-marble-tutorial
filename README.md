@@ -14,19 +14,19 @@ Adding volumetric effects to a built-in Three.js shader.
 Install dependencies:
 
 ```
-npm install
+yarn
 ```
 
 Compile the code for development and start a local server:
 
 ```
-npm start
+yarn dev
 ```
 
 Create the build:
 
 ```
-npm run build
+yarn build
 ```
 
 ## Misc
