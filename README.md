@@ -31,7 +31,7 @@ npm run build
 
 ## Misc
 
-Follow Matt: [Twitter](https://twitter.com/messages/18642262-1185030708999442432), [GitHub](https://github.com/mattrossman) 
+Follow Matt: [Twitter](https://twitter.com/the_ross_man), [GitHub](https://github.com/mattrossman) 
 
 Follow Codrops: [Twitter](http://www.twitter.com/codrops), [Facebook](http://www.facebook.com/codrops), [GitHub](https://github.com/codrops), [Instagram](https://www.instagram.com/codropsss/)
 
