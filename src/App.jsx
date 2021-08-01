@@ -52,7 +52,7 @@ function Marble({ step, setStep }) {
           <MagicMarbleMaterial step={step} roughness={0.1} />
         </Sphere>
       </a3.group>
-      <Box onPointerDown={() => setTap(true)} onPointerUp={() => setTap(false)}>
+      <Box args={[100, 100, 100]} onPointerDown={() => setTap(true)} onPointerUp={() => setTap(false)}>
         <meshBasicMaterial side={THREE.BackSide} visible={false} />
       </Box>
     </group>
