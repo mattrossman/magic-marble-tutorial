@@ -22,43 +22,44 @@ export default function App() {
     config: { tension: 50 },
   })
   const springyGradient = hsl.to((h, s, l) => `radial-gradient(hsl(${h}, ${s * 0.7}%, ${l}%), hsl(${h},${s * 0.4}%, ${l * 0.2}%))`)
-  const [tap, setTap] = useState(false)
   return (
     <aw.div style={{ background: springyGradient, width: '100%', height: '100%' }}>
-      <Canvas camera={{ position: [0, 0, 2.5] }}>
+      <Canvas camera={{ position: [0, 0, 2] }}>
         <Suspense fallback={null}>
           <OrbitControls autoRotate enableRotate={false} enablePan={false} enableZoom={false} />
-          <Marble tap={tap} step={step} setStep={setStep} />
+          <Marble step={step} setStep={setStep} />
           <Environment preset="warehouse" />
-          <Box scale={100} onPointerDown={() => setTap(true)} onPointerUp={() => setTap(false)}>
-            <meshBasicMaterial side={THREE.BackSide} visible={false} />
-          </Box>
         </Suspense>
       </Canvas>
     </aw.div>
   )
 }
 
-function Marble({ tap, step, setStep }) {
-  const ref = useRef()
+function Marble({ step, setStep }) {
   const [hover, setHover] = useState(false)
+  const [tap, setTap] = useState(false)
   const { scale } = useSpringThree({
-    scale: hover ? (tap ? 1.05 : 1.1) : 1,
+    scale: tap && hover ? 0.95 : 1,
     config: {
       friction: 15,
       tension: 300,
     },
   })
   return (
-    <a3.group scale={scale} onPointerEnter={() => setHover(true)} onPointerOut={() => setHover(false)} onClick={() => setStep(step + 1)}>
-      <Sphere args={[1, 64, 32]} ref={ref}>
-        <MagicMarbleMaterial step={step} modelRef={ref} roughness={0.1} />
-      </Sphere>
-    </a3.group>
+    <group>
+      <a3.group scale={scale} onPointerEnter={() => setHover(true)} onPointerOut={() => setHover(false)} onClick={() => setStep(step + 1)}>
+        <Sphere args={[1, 64, 32]}>
+          <MagicMarbleMaterial step={step} roughness={0.1} />
+        </Sphere>
+      </a3.group>
+      <Box onPointerDown={() => setTap(true)} onPointerUp={() => setTap(false)}>
+        <meshBasicMaterial side={THREE.BackSide} visible={false} />
+      </Box>
+    </group>
   )
 }
 
-function MagicMarbleMaterial({ step, modelRef, ...props }) {
+function MagicMarbleMaterial({ step, ...props }) {
   const noiseMap = useTexture('noise.jpg')
   const displacementMap = useTexture('displacement.jpg')
   noiseMap.minFilter = displacementMap.minFilter = THREE.NearestFilter
@@ -90,8 +91,6 @@ function MagicMarbleMaterial({ step, modelRef, ...props }) {
   })
   useFrame(({ clock }) => {
     uniforms.time.value = timeOffset.get() + clock.elapsedTime * 0.05
-    modelRef.current.updateMatrixWorld()
-    uniforms.worldToLocal.value.copy(modelRef.current.matrixWorld).invert()
   })
 
   const onBeforeCompile = (shader) => {
