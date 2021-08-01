@@ -5,9 +5,10 @@ import reactRefresh from '@vitejs/plugin-react-refresh'
 export default defineConfig({
   plugins: [reactRefresh()],
   root: 'src',
+  base: '',
   publicDir: '../public',
   build: {
-    outDir: '../dist',
+    outDir: '../dist'
   },
   esbuild: {
     jsxInject: "import React from 'react'",
