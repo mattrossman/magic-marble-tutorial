@@ -1,10 +1,9 @@
-import { useRef, Suspense, useState } from 'react'
+import { Suspense, useState } from 'react'
 import { Sphere, OrbitControls, Box, useTexture, Environment } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
-import * as ShaderUtils from './ShaderUtils'
-import * as THREE from 'three'
 import { a as aw, useSpring as useSpringWeb } from '@react-spring/web'
 import { a as a3, useSpring as useSpringThree } from '@react-spring/three'
+import * as THREE from 'three'
 
 // HSL values
 const options = [
@@ -52,6 +51,7 @@ function Marble({ step, setStep }) {
           <MagicMarbleMaterial step={step} roughness={0.1} />
         </Sphere>
       </a3.group>
+      {/* This big invisible box is just a pointer target so we can reliably track if the mouse button is up or down */}
       <Box args={[100, 100, 100]} onPointerDown={() => setTap(true)} onPointerUp={() => setTap(false)}>
         <meshBasicMaterial side={THREE.BackSide} visible={false} />
       </Box>
@@ -59,27 +59,33 @@ function Marble({ step, setStep }) {
   )
 }
 
+/**
+ * @typedef MagicMarbleMaterialProps
+ * @property {number} step - Which step of the color sequence we're on
+ *
+ * @param {MagicMarbleMaterialProps & THREE.MeshStandardMaterialParameters}
+ */
 function MagicMarbleMaterial({ step, ...props }) {
-  const noiseMap = useTexture('noise.jpg')
-  const displacementMap = useTexture('displacement.jpg')
-  noiseMap.minFilter = displacementMap.minFilter = THREE.NearestFilter
-  noiseMap.wrapS = noiseMap.wrapT = THREE.RepeatWrapping
+  // Load the noise textures
+  const heightMap = useTexture('noise.jpg')
+  const displacementMap = useTexture('noise3D.jpg')
+  heightMap.minFilter = displacementMap.minFilter = THREE.NearestFilter
   displacementMap.wrapS = displacementMap.wrapT = THREE.RepeatWrapping
+
+  // Create persistent local uniforms object
   const [uniforms] = useState(() => ({
     time: { value: 0 },
     colorA: { value: new THREE.Color(0, 0, 0) },
     colorB: { value: new THREE.Color(1, 0, 0) },
-    worldToLocal: { value: new THREE.Matrix4() },
-    noiseMap: { value: noiseMap },
+    heightMap: { value: heightMap },
     displacementMap: { value: displacementMap },
-    iterations: { value: 64 },
-    maxDepth: { value: 0.75 },
+    iterations: { value: 48 },
+    depth: { value: 0.6 },
     smoothing: { value: 0.2 },
-    refraction: { value: 0.7 },
-    displacementStrength: { value: 0.04 },
+    displacement: { value: 0.1 },
   }))
-  uniforms.noiseMap.value = noiseMap
-  uniforms.displacementMap.value = displacementMap
+
+  // This spring value allows us to "fast forward" the displacement in the marble
   const { timeOffset } = useSpringThree({
     hsl: options[step % options.length],
     timeOffset: step * 0.2,
@@ -89,105 +95,118 @@ function MagicMarbleMaterial({ step, ...props }) {
       uniforms.colorB.value.setHSL(h / 360, s / 100, l / 100)
     },
   })
+
+  // Update time uniform on each frame
   useFrame(({ clock }) => {
     uniforms.time.value = timeOffset.get() + clock.elapsedTime * 0.05
   })
 
+  // Add our custom bits to the MeshStandardMaterial
   const onBeforeCompile = (shader) => {
-    // Inject uniforms
-    ShaderUtils.mergeUniforms(shader, uniforms)
+    // Wire up local uniform references
+    shader.uniforms = { ...shader.uniforms, ...uniforms }
 
-    // Assuming sphere geometry
-    ShaderUtils.vertHead(
-      shader,
+    // Add to top of vertex shader
+    shader.vertexShader =
       /* glsl */ `
-      uniform mat4 worldToLocal;
-
       varying vec3 v_pos;
       varying vec3 v_dir;
-    `
-    )
-    ShaderUtils.vertBody(
-      shader,
-      /* glsl */ `
-      vec3 cameraPositionLocal = (worldToLocal * vec4(cameraPosition, 1.0)).xyz;
-      v_dir = position - cameraPositionLocal; // Local vec from camera to vert
-      v_pos = position;
-    `
+    ` + shader.vertexShader
+
+    // Assign values to varyings inside of main()
+    shader.vertexShader = shader.vertexShader.replace(
+      /void main\(\) {/,
+      (match) =>
+        match +
+        /* glsl */ `
+        v_dir = position - cameraPosition; // Points from camera to vertex
+        v_pos = position;
+        `
     )
 
-    ShaderUtils.fragHead(
-      shader,
+    // Add to top of fragment shader
+    shader.fragmentShader =
       /* glsl */ `
-      uniform float time;
+      #define FLIP vec2(1., -1.)
+      
       uniform vec3 colorA;
       uniform vec3 colorB;
-      uniform sampler2D noiseMap;
+      uniform sampler2D heightMap;
       uniform sampler2D displacementMap;
       uniform int iterations;
-      uniform float maxDepth;
+      uniform float depth;
       uniform float smoothing;
-      uniform float refraction;
-      uniform float displacementStrength;
-
+      uniform float displacement;
+      uniform float time;
+      
       varying vec3 v_pos;
       varying vec3 v_dir;
+    ` + shader.fragmentShader
 
-      /**
-       * @param {vec3} p - 3D position
-       * @returns {vec2} UV coordinate on a unit sphere 
-       */
-      vec2 uvSphere(vec3 p) {
-        vec3 pn = normalize(p);
-        float u = 0.5 - atan(pn.z, pn.x) / (2. * 3.1415926);
-        float v = 0.5 + asin(pn.y) / 3.1415926;
-        return vec2(u, v);
-      }
-
-      /**
-       * Note: we assume a unit sphere
-       * 
-       * @param {vec3} rayOrigin - Point on sphere
-       * @param {vec3} rayDir - Normalized view direction
-       * @returns {vec3} Accumulated RGB color
-       */
-      vec3 marchMarble(vec3 rayOrigin, vec3 rayDir) {
-        float perIteration = 1. / float(iterations);
-        vec3 deltaRay = rayDir * perIteration * maxDepth;
-        float c = 0.;
-
-        // Start at point of intersection
-        vec3 p = rayOrigin;
-
-        for (int i=0; i<iterations; ++i) {
-          vec2 uv = uvSphere(p);
-          vec3 displacementA = texture(displacementMap, uv + vec2(time, 0.)).rgb * 2. - 1.;
-          vec3 displacementB = texture(displacementMap, vec2(uv.x, -uv.y) - vec2(time, 0.)).rgb * 2. - 1.;
-          uv = uvSphere(p + (displacementA + displacementB) * displacementStrength);
-          float noiseVal = texture(noiseMap, uv).r;
-          float height = length(p); // 1 at surface, 0 at core
-          float cutoff = 1. - float(i) * perIteration;
-          float mask = smoothstep(cutoff, cutoff + smoothing, noiseVal);
-          c += mask * perIteration;
-          p += deltaRay;
+    // Add above fragment shader main() so we can access common.glsl.js
+    shader.fragmentShader = shader.fragmentShader.replace(
+      /void main\(\) {/,
+      (match) =>
+        /* glsl */ `
+       	/**
+         * @param p - Point to displace
+         * @param strength - How much the map can displace the point
+         * @returns Point with scrolling displacement applied
+         */
+        vec3 displacePoint(vec3 p, float strength) {
+        	vec2 uv = equirectUv(normalize(p));
+          vec2 scroll = vec2(time, 0.);
+          vec3 displacementA = texture(displacementMap, uv + scroll).rgb; // Upright
+					vec3 displacementB = texture(displacementMap, uv * FLIP - scroll).rgb; // Upside down
+          
+          // Center the range to [-0.5, 0.5], note the range of their sum is [-1, 1]
+          displacementA -= 0.5;
+          displacementB -= 0.5;
+          
+          return p + strength * (displacementA + displacementB);
         }
-        return mix(colorA, colorB, c);
-      }
-      `
+        
+				/**
+          * @param rayOrigin - Point on sphere
+          * @param rayDir - Normalized ray direction
+          * @returns Diffuse RGB color
+          */
+        vec3 marchMarble(vec3 rayOrigin, vec3 rayDir) {
+          float perIteration = 1. / float(iterations);
+          vec3 deltaRay = rayDir * perIteration * depth;
+
+          // Start at point of intersection and accumulate volume
+          vec3 p = rayOrigin;
+          float totalVolume = 0.;
+
+          for (int i=0; i<iterations; ++i) {
+            // Read heightmap from spherical direction of displaced ray position
+            vec3 displaced = displacePoint(p, displacement);
+            vec2 uv = equirectUv(normalize(displaced));
+            float heightMapVal = texture(heightMap, uv).r;
+
+            // Take a slice of the heightmap
+            float height = length(p); // 1 at surface, 0 at core, assuming radius = 1
+            float cutoff = 1. - float(i) * perIteration;
+            float slice = smoothstep(cutoff, cutoff + smoothing, heightMapVal);
+
+            // Accumulate the volume and advance the ray forward one step
+            totalVolume += slice * perIteration;
+            p += deltaRay;
+          }
+          return mix(colorA, colorB, totalVolume);
+        }
+      ` + match
     )
 
     shader.fragmentShader = shader.fragmentShader.replace(
       /vec4 diffuseColor.*;/,
       /* glsl */ `
-        vec3 rayOrigin = normalize(v_pos);
-        vec3 norm = -rayOrigin;
-        
-        vec3 rayDir = normalize(v_dir);
-        rayDir = mix(rayDir, norm, refraction);
-        rayDir = normalize(rayDir);
-
-        vec3 rgb = marchMarble(rayOrigin, rayDir);
-        vec4 diffuseColor = vec4( rgb, opacity);
+      vec3 rayDir = normalize(v_dir);
+      vec3 rayOrigin = v_pos;
+      
+      vec3 rgb = marchMarble(rayOrigin, rayDir);
+      vec4 diffuseColor = vec4(rgb, 1.);      
       `
     )
   }
@@ -196,6 +215,7 @@ function MagicMarbleMaterial({ step, ...props }) {
     <meshStandardMaterial
       {...props}
       onBeforeCompile={onBeforeCompile}
+      // The following props allow React hot-reload to work with the onBeforeCompile argument
       onUpdate={(m) => (m.needsUpdate = true)}
       customProgramCacheKey={() => onBeforeCompile.toString()}
     />
