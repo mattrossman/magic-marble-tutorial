@@ -2,11 +2,11 @@
 
 Adding volumetric effects to a built-in Three.js shader.
 
-![Image Title](https://generative-placeholders.glitch.me/image?width=800&height=600")
+![Image Title](https://tympanus.net/codrops/wp-content/uploads/2021/08/marble.jpg)
 
 [Article on Codrops](https://tympanus.net/codrops/?p=55713)
 
-[Demo](http://tympanus.net/Development/MagicalMarbles/)
+[Demo](http://tympanus.net/Tutorials/MagicalMarbles/)
 
 
 ## Installation
@@ -28,10 +28,6 @@ Create the build:
 ```
 npm run build
 ```
-
-## Credits
-
-- *third party resources*
 
 ## Misc
 
